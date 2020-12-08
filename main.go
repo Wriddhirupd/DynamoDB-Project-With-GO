@@ -1,9 +1,7 @@
 package main
 
 import (
-	// "encoding/json"
 	"fmt"
-	// "os"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -13,44 +11,60 @@ import (
 
 func main() {
 
+	type Movie struct {
+		Year  int         `json:"year"`
+		Title string      `json:"title"`
+		Info  interface{} `json:"info,omitempty"`
+	}
+
 	sess, err := session.NewSession(&aws.Config{
 		Region: aws.String("us-west-2"),
 	})
 	svc := dynamodb.New(sess)
 
-	type MovieInfo struct {
-		Plot   string  `json:"plot"`
-		Rating float64 `json:"rating"`
-	}
-
-	type Movie struct {
-		Year  int       `json:"year"`
-		Title string    `json:"title"`
-		Info  MovieInfo `json:"info"`
-	}
-
-	movie := Movie{
+	movieKey := Movie{
 		Year:  2015,
 		Title: "The Big New Movie",
-		Info: MovieInfo{
-			Plot:   "Nothing happens at all.",
-			Rating: 0.0,
-		},
 	}
 
-	av, err := dynamodbattribute.MarshalMap(movie)
-
-	input := &dynamodb.PutItemInput{
-		Item:      av,
-		TableName: aws.String("Movies"),
-	}
-
-	_, err = svc.PutItem(input)
+	key, err := dynamodbattribute.MarshalMap(movieKey)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
 	}
 
-	fmt.Printf("We have inserted a new item!\n")
+	input := &dynamodb.GetItemInput{
+		Key:       key,
+		TableName: aws.String("Movies"),
+	}
 
+	result, err := svc.GetItem(input)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	movie := Movie{}
+	err = dynamodbattribute.UnmarshalMap(result.Item, &movie)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	fmt.Println("year: ", movie.Year)
+	fmt.Println("title: ", movie.Title)
+
+	infoMap := movie.Info.(map[string]interface{})
+	for k, v := range infoMap {
+		switch vv := v.(type) {
+		case string, float64:
+			fmt.Println(k, ": ", vv)
+		case []interface{}:
+			for i, u := range vv {
+				fmt.Println(i, u)
+			}
+		default:
+			fmt.Println(k, "is of a type I don't know how to handle")
+		}
+	}
 }
